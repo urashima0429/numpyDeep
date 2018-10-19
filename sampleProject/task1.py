@@ -7,8 +7,9 @@ mndata = MNIST("/export/home/016/a0165336/project/le4nn/")
 
 # constants
 def init():
-    m = 10
-    np.random.seed(0)
+    m = 10  # node size
+    learning_rate = 0.01
+    np.random.seed(1)
     network = {}
     network['w1'] = np.random.normal(0, 1/math.sqrt(784),(784,m))
     network['b1'] = np.random.normal(0, 1/math.sqrt(784),(m, ))
@@ -72,8 +73,8 @@ X = X.reshape((X.shape[0],28,28))
 Y = np.array(Y)
 
 b_size = 100
-batch = np.random.randint(0,59999,b_size)
 
+batch = np.random.randint(0,59999,b_size)
 # 入力層 (b_size, 28,28) => (b_size, 784)
 x = X[batch].reshape( (b_size, 784) )
 
@@ -92,3 +93,5 @@ x = softmax(x)
 # 後処理
 x = cross_entropy_error(x, np.identity(10)[Y[batch]])
 print(np.average(x))
+
+np.save()
