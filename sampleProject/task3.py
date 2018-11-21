@@ -14,11 +14,13 @@ mndata = MNIST("/export/home/016/a0165336/project/le4nn/")
 
 # set my constants
 np.random.seed(0)
-node_size = 10  # node size
+node_size = 100  # node size
 batch_size = 100 # 100
-epoch = 10000 # 10
+epoch = 10 # 10
+train_data_size = 60000
+test_data_size = 10000
 learning_rate = 0.01
-result = np.zeros(epoch)
+result = np.zeros( int(epoch * train_data_size / batch_size) )
 
 #############
 # Functions #
@@ -28,9 +30,9 @@ def sigmoid(x):
     return np.where( x < -709, 0.0, 1 / (1 + np.exp(-x)))
 
 def softmax(x):
-    c = np.max(x)
-    exp_x = np.exp(x - c)
-    return exp_x / np.sum(exp_x)
+    c = np.max(x, axis=1) # todo
+    exp_x = np.exp( (x.T - c).T )
+    return (exp_x.T / np.sum(exp_x, axis=1)).T # todo
 
 def cross_entropy_error(x, y):
     return -np.sum(y * np.log(x)) / x.shape[0]
@@ -43,9 +45,15 @@ def init():
     network['b2'] = np.random.normal(0, 1/math.sqrt(node_size),(10, ))
     return network
 
-def load_data():
+def load_train_data():
     X, Y = mndata.load_training()
-    X = np.array(X).reshape((60000, 784)) / 255    # 0 ~ 1 :(60000, 784)
+    X = np.array(X).reshape((train_data_size, 784)) / 255    # 0 ~ 1 :(60000, 784)
+    Y = np.identity(10)[np.array(Y)]          # one-hot vector : (60000, 10)
+    return X, Y
+
+def load_test_data():
+    X, Y = mndata.load_testing()
+    X = np.array(X).reshape((test_data_size, 784)) / 255    # 0 ~ 1 :(60000, 784)
     Y = np.identity(10)[np.array(Y)]          # one-hot vector : (60000, 10)
     return X, Y
 
@@ -97,22 +105,20 @@ def plot(result, label_name = ''):
 start = time.time()
 
 network = init()
-X, Y = load_data()
+X, Y = load_train_data()
+testX, testY = load_test_data()
 
-for i in range(epoch):
+# training
+for i in range(result.size):
     input, label = chose_batch(X, Y)
     output = forward_propagation(input)
-    error = cross_entropy_error(output, label)
-    print(error)
-    result[i] = error
+    result[i] = cross_entropy_error(output, label)
     print(result[i])
     back_propagation(output, label)
 
-# np.save('network.npy', network)
-# np.load('network.npy')
 
 elapsed = time.time() - start
 print()
 print('time : {0}sec'.format(elapsed))
 
-plot(result, 'error')
+plot(result, 'train error')
