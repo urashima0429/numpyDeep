@@ -14,9 +14,9 @@ mndata = MNIST("/export/home/016/a0165336/project/le4nn/")
 
 # set my constants
 np.random.seed(0)
-node_size = 10  # node size
+node_size = 100  # node size
 batch_size = 100 # 100
-epoch = 10 # 10
+epoch = 100 # 10
 train_data_size = 60000
 test_data_size = 10000
 learning_rate = 0.01
@@ -122,16 +122,12 @@ for i in range(train_result.size):
     input, label = chose_batch(X, Y)
     output = forward_propagation(input)
     train_result[i] = cross_entropy_error(output, label)
-    # print(result[i])
+    print(train_result[i])
     back_propagation(output, label)
 
 # testing
 testX, testY = load_test_data()
 print(np.sum(forward_propagation(testX).argmax(axis=1) == testY.argmax(axis=1)) / test_data_size)
-
-# np.save('network.npy', network)
-# np.load('network.npy')
-
 
 
 elapsed = time.time() - start

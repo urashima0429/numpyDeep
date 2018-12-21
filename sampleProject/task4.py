@@ -14,7 +14,7 @@ mndata = MNIST("/export/home/016/a0165336/project/le4nn/")
 
 # set my constants
 np.random.seed(0)
-node_size = 10  # node size
+node_size = 100  # node size
 batch_size = 100 # 100
 epoch = 50 # 10
 train_data_size = 60000
@@ -118,7 +118,8 @@ for i in range(result.size):
 
 # testing
 test = forward_propagation(testX)
-print(np.sum(test.argmax(axis=1) == testY.argmax(axis=1)) / test_data_size)
+print()
+print('test accuracy', np.sum(test.argmax(axis=1) == testY.argmax(axis=1)) / test_data_size)
 
 
 # np.save('network.npy', network)

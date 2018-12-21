@@ -1,11 +1,12 @@
-# pooling層のデフォルト値
-
-
-
-import numpy as np
-from numpy.lib.stride_tricks import as_strided
+import time
 import math
-dropout_rate = 0.1
+import numpy as np
+from mnist import MNIST
+import pickle
+import matplotlib.pyplot as plt
+from numpy.lib.stride_tricks import as_strided
+
+dropout_rate = 0.40
 
 class Optimizer:
     # SGD
@@ -141,16 +142,40 @@ class Layer:
 
     def _back_activation(self, grad_z):
         if   self.fun == 'sigmoid': return grad_z * (1 - grad_z)
-        elif self.fun == 'relu':    return np.where(self.y > 0, 1, 0.0)
+        elif self.fun == 'relu':    return np.where(self.y > 0, grad_z, 0.0)
         elif self.fun == 'softmax': return grad_z # todo grad_y = grad_z
         elif self.fun == 'dropout':
-            return np.where(self.y > 0, self.dropouter , 0.0)
+            return np.where(self.y > 0, self.dropouter * grad_z, 0.0)
 
     def forward(self, data, it):
         return data
 
     def backward(self, grad):
         return grad
+
+class DenceLayer(Layer):
+
+    def __init__(self, input, output, fun, method):
+
+        self.w = np.random.normal(0, 1 / math.sqrt(input), (input, output))
+        self.b = np.random.normal(0, 1 / math.sqrt(input), (output,))
+        self.fun = fun
+        self.optimizer_w = Optimizer(method)
+        self.optimizer_b = Optimizer('Adam')
+
+    def forward(self, data, is_training):
+
+        self.x = data
+        self.y = np.dot(self.x, self.w) + self.b
+        self.z = self._activation(self.y, is_training)
+        return self.z
+
+    def backward(self, grad_z):
+        grad_y = self._back_activation(grad_z)
+        grad_x = np.dot(grad_y, self.w.T)
+        self.w += self.optimizer_w.pop(np.dot(self.x.T, grad_y))
+        self.b += self.optimizer_b.pop(grad_y.sum(axis=0))
+        return grad_x
 
 class ConvolutionLayer(Layer):
 
@@ -159,25 +184,25 @@ class ConvolutionLayer(Layer):
         self.fn = filter_num
         self.fs = filter_size
         self.fun = fun
-        self.w = np.ones((self.fn, self.fs * self.fs * self.cn))
-        # self.w = np.random.normal(0, 1 / math.sqrt(1), (self.fn, self.fs * self.fs * self.cn))
-        self.b = np.zeros((self.fn,))
-        # self.b = np.random.normal(0, 1 / math.sqrt(10), (self.fn,))
-        self.optimizer_w = Optimizer('SGD')
-        self.optimizer_b = Optimizer('SGD')
+        self.w = np.random.normal(0, 1 / math.sqrt(10), (self.fn, self.fs * self.fs * self.cn))
+        self.b = np.random.normal(0, 1 / math.sqrt(10), (self.fn,))
+        self.optimizer_w = Optimizer('Adam')
+        self.optimizer_b = Optimizer('Adam')
 
     # convolution
     # 入力画像と出力画像のサイズは統一想定
     # todo if input_x != input_y...
     # todo @param : stride
     # @param x      :(batch_size, channel_num, input_x, input_y)
-    # @param fn     :filter_num (=>出力画像のチャンネル数)
-    # @param fn     :filter_size
-    # @return       :(batch_size, fn, input_x, input_y)
+    # self.x.shape  :(batch_size * input_x * input_y, channel_num * filter_size * filter_size)
+    # self.y.shape  :(batch_size, self.fn * self.ix * self.iy)
+    # self.z.shape  :(batch_size, filter_num,  input_x, input_y)
+    # @return       :(batch_size, filter_num,  input_x, input_y)
     def forward(self, x, it):
         self.ps = int(self.fs / 2)
         self.bs, self.cn, self.ix, self.iy = x.shape
 
+        # 0-padding
         padded = np.pad(x, [(0, 0), (0, 0), (self.ps, self.ps), (self.ps, self.ps)], 'constant').transpose(0, 2, 3, 1)
 
         # as_strided によって padded から 以下の感じで参照を切り出して整列
@@ -188,33 +213,30 @@ class ConvolutionLayer(Layer):
         submatrices = as_strided(padded, (self.bs, self.ix, self.iy, self.cn, self.fs, self.fs),
                                  (dim[1] * dim[2] * 8, dim[1] * 8, 8, dim[0] * dim[1] * dim[2] * 8, dim[2] * 8, 8))
 
+        # make up large x
         self.x = submatrices.reshape(self.bs * self.ix * self.iy, self.cn * self.fs * self.fs).T
 
-        # test
-        # print(np.min(x), np.max(x))
-        # print(self.x.T[0].reshape(self.cn,self.fs,self.fs))
-        # print(self.x.T[-1].reshape(self.cn,self.fs,self.fs))
+        # convolution
+        self.y = (np.dot(self.w, self.x).T + self.b).reshape(self.bs, self.ix, self.iy, self.fn).transpose(0, 3, 1, 2).reshape(self.bs, self.fn * self.ix * self.iy)
 
-        # 畳み込む
-        self.y = np.dot(self.w, self.x).T + self.b
-
-        self.y = self.y.reshape(self.bs, self.ix, self.iy, self.fn).transpose(0, 3, 1, 2)
-
-        self.z = self._activation(self.y, it)
+        self.z = self._activation(self.y, it).reshape(self.bs, self.fn, self.ix, self.iy)
 
         return self.z
 
     def backward(self, grad_z):
 
-        grad_y = self._back_activation(grad_z)
-        grad_y = grad_y.transpose(1,0,2,3,).reshape(self.fn, self.bs * self.ix * self.iy)
-        grad_x = np.dot(self.w.T , grad_y)
-        grad_w = np.dot(grad_y, self.x.T)
-        grad_b = grad_y.sum(axis=1)
+        grad_y = self._back_activation(grad_z.reshape(self.bs, self.fn * self.ix * self.iy)).reshape(self.bs, self.fn, self.ix, self.iy)
+
+        grad_y = grad_y.transpose(1,0,2,3,).reshape(self.fn, self.bs * self.ix * self.iy).T
+
+        grad_x = np.dot(grad_y, self.w) #todo
+        grad_w = np.dot(grad_y.T, self.x.T)
+        grad_b = grad_y.sum(axis=0)
         self.w += self.optimizer_w.pop(grad_w)
         self.b += self.optimizer_b.pop(grad_b)
 
-        return grad_x
+
+        return
 
 class PoolingLayer(Layer):
 
@@ -226,7 +248,6 @@ class PoolingLayer(Layer):
     # pooling層でのchannel_numは直前のconvolution層でのfilter_numに相当する
     # 左上から切り出すので、input_x/ps, input_y/psの端数分だけ右端下端が切り落とされる
     # @param x      :(batch_size, channel_num, input_x, input_y)
-    # @param ps     :pooling_size
     # @return       :(batch_size, channel_num, lx, ly)
     def forward(self, x, it):
 
@@ -240,49 +261,16 @@ class PoolingLayer(Layer):
         submatrices = submatrices.reshape(self.bs * self.cn * self.lx * self.ly, self.ps * self.ps)
         y = np.max(submatrices, axis=-1)
         self.address = np.identity(self.ps * self.ps)[np.argmax(submatrices, axis=1)].reshape(self.bs,self.cn,self.lx,self.ly,self.ps,self.ps).transpose(0,1,2,4,3,5).reshape(self.bs,self.cn,self.lx*self.ps,self.ly*self.ps)
-        print(self.address)
-
-        # test
-        test = y.reshape((self.bs, self.cn * self.lx * self.ly))
-        # print(test[0].reshape(self.cn, self.lx, self.ly))
-        # print(test[-1].reshape(self.cn, self.lx, self.ly))
 
         return y.reshape(self.bs, self.cn, self.lx, self.ly)
 
     def backward(self, grad_y):
         padded = np.pad(grad_y.reshape(self.bs,self.cn,self.lx,self.ly,1,1), [(0,0),(0,0),(0,0),(0,0),(self.ps-1,0),(self.ps-1,0)], 'edge').transpose(0,1,2,4,3,5).reshape(self.bs,self.cn,self.lx*self.ps,self.ly*self.ps)
-        # print(padded)
         return padded * self.address
 
-# # a = np.arange(2*3*6*6).reshape((2,3,6,6))
-# # a = np.random.normal(0, 1 / math.sqrt(10), (2,3,6,6))
-# a = np.array([
-#
-#     [[ 0,10,10, 0],
-#      [ 0, 0, 0, 0],
-#      [ 6,-1, 0, 0],
-#      [ 0, 0,-1, 0],],
-#
-#     [[-1, 10, 10, 0],
-#      [0, 0, 0, 11],
-#      [-1, 0, 0, 0],
-#      [0, 0, -1, 0],]
-#
-# ]).reshape(1,2,4,4)
-#
-# pooling = PoolingLayer(1)+
-# b = pooling.forward(a, 0)
-#
-# # print(a)
-# # print(b)
-# c = pooling.backward(b)
-# print( c)
+# a = np.arange(2*3*6*6).reshape((2,3,6,6))
+a = np.random.normal(0, 1 / math.sqrt(10), (2,3,3,3))
 
-d = np.arange(1*2*3*3).reshape((1,2,3,3))
-# ConvolutionLayer(channnel_num, filter_num, filter_size, fun, method),
-conv = ConvolutionLayer(2, 1, 3, 'relu', 'SGD')
-e = conv.forward(d, True)
-print(d)
-print(e)
-f = conv.backward(e)
-# print(f)
+conv = ConvolutionLayer(3, 3, 3, 'relu', 'Adam')
+
+b = conv.forward(a, 0)

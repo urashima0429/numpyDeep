@@ -287,12 +287,19 @@ class Layer:
         exp_x = np.exp((x.T - c).T)
         return (exp_x.T / np.sum(exp_x, axis=1)).T  # todo
 
+    # def _drop(self, shape):
+    #     dropouter = np.ones(shape)
+    #     node_drop = int(shape[1] * dropout_rate)
+    #     for i in range(shape[0]):
+    #         dropouter[i][np.random.randint(0, shape[1] - 1, node_drop)] = 0
+    #     return dropouter
+
     def _drop(self, shape):
-        dropouter = np.ones(shape)
-        node_drop = int(shape[1] * dropout_rate)
-        for i in range(shape[0]):
-            dropouter[i][np.random.randint(0, shape[1] - 1, node_drop)] = 0
-        return dropouter
+        flat = shape[0] * shape[1]
+        dropouter = np.ones(flat,)
+        node_drop = int(flat * dropout_rate)
+        dropouter[np.random.randint(0, flat - 1, node_drop)] = 0
+        return dropouter.reshape(shape[0], shape[1])
 
     def _activation(self, y, is_training):
         if   self.fun == 'sigmoid': return self._sigmoid(y)
@@ -491,7 +498,7 @@ optimization_methods = ['Adam']
 # optimization_methods = ['SGD', 'Adam']
 # optimization_methods = ['SGD', 'MSGD', 'AdaGrad', 'RMSProp', 'AdaDelta', 'Adam']
 batch_size = 100  # 100
-epoch = 100  # 10
+epoch = 5  # 10
 e = 1e-7
 dropout_rate = 0.25
 
@@ -535,15 +542,6 @@ for method in optimization_methods:
         5: DenceLayer(600, 600, 'dropout', method),
         6: BatchNormalizer(),
         7: DenceLayer(600, 10, 'softmax', method),
-
-        # 0: ConvolutionLayer(1, 3, 5, 'dropout', method),
-        # 1: PoolingLayer(2),
-        # 2: ConvolutionLayer(3, 3, 5, 'dropout', method),
-        # 3: PoolingLayer(2),
-        # 4: Reshaper(3, 7, 7),
-        # 5: DenceLayer(3 * 7 * 7, 150, 'dropout', method),
-        # 6: BatchNormalizer(),
-        # 7: DenceLayer(150, 10, 'softmax', method),
     })
 
     start = time.time()

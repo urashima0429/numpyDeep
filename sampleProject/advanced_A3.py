@@ -17,7 +17,7 @@ e = 1e-7
 np.random.seed(1)
 node_size = 10  # node size
 batch_size = 100 # 100
-epoch = 1 # 10
+epoch = 10 # 10
 train_data_size = 60000
 test_data_size = 10000
 learning_rate = 0.01
@@ -34,8 +34,7 @@ result['train']['sigmoid'] =   np.zeros(times)
 result['train']['relu'] =      np.zeros(times)
 result['train']['dropout'] =   np.zeros(times)
 result['time'] = {}
-is_training = False
-dropout_rate = 0.2
+dropout_rate = 0.25
 node_drop = int(node_size * dropout_rate)
 
 
@@ -55,6 +54,12 @@ def dropout(x, is_training):
         for i in range(x.shape[0]):
             network['dropouter'][i][np.random.randint(0, node_size - 1, node_drop)] = 0
         return np.where(x > 0, x * network['dropouter'], 0.0)
+
+        # flat = x.shape[0] * x.shape[1]
+        # dropout = np.ones(flat,)
+        # dropout[np.random.randint(0, flat - 1, node_drop)] = 0
+        # network['dropouter'] = dropout.reshape(x.shape)
+        # return np.where(x > 0, x * network['dropouter'], 0.0)
 
     else:
         return np.where(x > 0, x * (1-dropout_rate), 0.0)

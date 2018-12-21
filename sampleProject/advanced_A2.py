@@ -14,14 +14,13 @@ mndata = MNIST("/export/home/016/a0165336/project/le4nn/")
 
 # set my constants
 np.random.seed(0)
-node_size = 10  # node size
+node_size = 100  # node size
 batch_size = 100 # 100
-epoch = 10 # 10
+epoch = 100 # 10
 train_data_size = 60000
 test_data_size = 10000
 learning_rate = 0.01
 train_result = np.zeros( int(epoch * train_data_size / batch_size) )
-is_training = False
 dropout_rate = 0.2
 node_drop = int(node_size * dropout_rate)
 
@@ -33,16 +32,21 @@ node_drop = int(node_size * dropout_rate)
 # def sigmoid(x):
 #     return np.where( x < -709, 0.0, 1 / (1 + np.exp(-x)))
 
-def relu(x):
-    return np.where( x > 0, x, 0.0)
+# def relu(x):
+#     return np.where( x > 0, x, 0.0)
 
 def dropout(x, is_training):
-    if is_training: # todo  内包表記にする
+    if is_training:
         network['dropouter'] = np.ones(x.shape)
         for i in range(x.shape[0]):
             network['dropouter'][i][np.random.randint(0, node_size - 1, node_drop)] = 0
-        print(network['dropouter'])
         return np.where(x > 0, x * network['dropouter'], 0.0)
+
+        # flat = x.shape[0] * x.shape[1]
+        # dropout = np.ones(flat,)
+        # dropout[np.random.randint(0, flat - 1, node_drop)] = 0
+        # network['dropouter'] = dropout.reshape(x.shape)
+        # return np.where(x > 0, x * network['dropouter'], 0.0)
 
     else:
         return np.where(x > 0, x * (1-dropout_rate), 0.0)
@@ -83,9 +87,10 @@ def chose_batch(X, Y):
 def forward_propagation (input, is_training):
     network['x1'] = input
     network['y1'] = np.dot(network['x1'], network['w1']) + network['b1']
+
     # network['x2'] = relu(network['y1'])
     network['x2'] = dropout(network['y1'], is_training)
-    network['x2'] = relu(network['y1'])
+    # network['x2'] = relu(network['y1'])
 
 
     network['y2'] = np.dot(network['x2'], network['w2']) + network['b2']
@@ -107,6 +112,7 @@ def back_propagation (output, label):
 
     # dropout
     grad_En_Y1 = np.where(network['y1'] > 0 , network['dropouter'] * grad_En_X2 , 0.0)
+
     network['w1'] -= learning_rate * np.dot(network['x1'].T, grad_En_Y1)
     network['b1'] -= learning_rate * grad_En_Y1.sum(axis=0)
     return 0
@@ -141,22 +147,16 @@ X, Y = load_train_data()
 
 
 # training
-is_training = True
 for i in range(train_result.size):
     input, label = chose_batch(X, Y)
-    output = forward_propagation(input, is_training)
+    output = forward_propagation(input, True)
     train_result[i] = cross_entropy_error(output, label)
     print(train_result[i])
     back_propagation(output, label)
 
 # testing
-is_training = False
 testX, testY = load_test_data()
-print(np.sum(forward_propagation(testX, is_training).argmax(axis=1) == testY.argmax(axis=1)) / test_data_size)
-
-# np.save('network.npy', network)
-# np.load('network.npy')
-
+print(np.sum(forward_propagation(testX, False).argmax(axis=1) == testY.argmax(axis=1)) / test_data_size)
 
 
 elapsed = time.time() - start
